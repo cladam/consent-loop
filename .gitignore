@@ -1,4 +1,5 @@
-docs/PRD-ConsentLoop.md
 .DS_Store
 .koka
 
+# tbdflow intent log (local-only, never committed)
+.tbdflow-intent.json

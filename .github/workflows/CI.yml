@@ -1,0 +1,118 @@
+name: Build, Test, and Release
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [ "main" ]
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & Test (${{ matrix.artifact }})
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: hedit-linux-x86_64
+          - os: ubuntu-24.04-arm
+            artifact: hedit-linux-arm64
+          - os: macos-latest
+            artifact: hedit-macos-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install Koka
+        run: |
+          # curl -sSL https://github.com/koka-lang/koka/releases/latest/download/install.sh | sudo sh
+          curl -sSL https://github.com/koka-lang/koka/releases/download/v3.2.3/install.sh | sudo sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install hica compiler
+        run: |
+          curl -fsSL https://www.hica.dev/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Verify compiler versions
+        run: |
+          koka --version
+          hica --version
+
+      - name: Build binary
+        run: |
+          mkdir -p "$HOME/.hica/stdlib"
+          hica fetch
+          hica build -o hedit
+
+      - name: Run unit tests
+        run: |
+          set +e
+          failed=0
+          ran=0
+          for f in tests/*_test.hc; do
+            [ -e "$f" ] || continue
+            ran=$((ran + 1))
+            echo "=== $f ==="
+            output=$(hica test "$f" 2>&1)
+            echo "$output"
+            if echo "$output" | grep -q 'failed'; then
+              failed=1
+            fi
+          done
+          if [ "$ran" -eq 0 ]; then
+            echo "error: no test files matched tests/*_test.hc"
+            failed=1
+          fi
+          exit $failed
+
+      - name: Strip binary (Linux)
+        if: runner.os == 'Linux'
+        run: strip hedit
+
+      - name: Ad-hoc codesign (macOS)
+        if: runner.os == 'macOS'
+        run: codesign --sign - --force hedit
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp hedit dist/hedit
+          cp man/hedit.1 dist/hedit.1
+          tar czf ${{ matrix.artifact }}.tar.gz -C dist hedit hedit.1
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}.tar.gz
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            *.tar.gz
+            install.sh

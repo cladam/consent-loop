@@ -9,6 +9,7 @@
     http: "latest"
     sqlite: "latest"
     json: "latest"
+    hml: "latest"
 }
 
 @description {

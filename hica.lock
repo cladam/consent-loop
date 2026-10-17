@@ -14,3 +14,8 @@ source = "registry+pkg.hica.dev@latest"
 name = "json"
 version = "latest"
 source = "registry+pkg.hica.dev@latest"
+
+[[package]]
+name = "hml"
+version = "latest"
+source = "registry+pkg.hica.dev@latest"
