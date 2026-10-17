@@ -1,5 +1,5 @@
 main_branch_name: main
-release_url_template: https://github.com/owner/repository/releases/tag/{{version}}
+release_url_template: https://github.com/cladam/consent-loop/releases/tag/{{version}}
 stale_branch_threshold_days: 1
 log_display_count: 15
 monorepo:
@@ -29,7 +29,7 @@ radar:
   - '*-lock.*'
   - CHANGELOG.md
 ci_check:
-  enabled: false
+  enabled: true
 branch_types:
   ci: ci/
   docs: docs/
