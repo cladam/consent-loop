@@ -1,0 +1,16 @@
+# hica.lock — auto-generated, do not edit
+
+[[package]]
+name = "http"
+version = "latest"
+source = "registry+pkg.hica.dev@latest"
+
+[[package]]
+name = "sqlite"
+version = "latest"
+source = "registry+pkg.hica.dev@latest"
+
+[[package]]
+name = "json"
+version = "latest"
+source = "registry+pkg.hica.dev@latest"

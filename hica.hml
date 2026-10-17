@@ -6,6 +6,9 @@
 }
 
 @dependencies {
+    http: "latest"
+    sqlite: "latest"
+    json: "latest"
 }
 
 @description {
@@ -13,4 +16,8 @@
     author: "cladam"
     homepage: "https://www.hica.dev"
     repository: "https://github.com/cladam/consent-loop.git"
+}
+
+@koka {
+    flags: "--cclib=microhttpd --cclib=sqlite3 --cclib=curl --ccincdir=/opt/homebrew/include --cclinkopts=-L/opt/homebrew/lib"
 }
