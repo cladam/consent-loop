@@ -141,7 +141,20 @@ value into relational tables prematurely.
 **Exit criteria:** The process boundary, route boundary, and test harness work
 without implementing proposal behavior.
 
-**Status:** Ready
+**Files touched**
+
+- `src/main.hc`
+- `src/db.hc`
+- `src/routes.hc`
+- `tests/foundation_test.hc`
+- `tests/health_integration.sh`
+- `Dockerfile`
+- `docker-compose.yml`
+- `.github/workflows/CI.yml`
+- `README.md`
+- `docs/PRD-ConsentLoop.md`
+
+**Status:** Complete
 
 ### M1 - HML Proposal Codec and Validation
 
@@ -467,6 +480,59 @@ than rewriting the historical reasoning.
    typed validation errors at each concrete return site avoids that ambiguity.
 - The codec is intentionally independent of the service foundation. M0 remains
    deferred and must be completed before API milestone M3.
+
+**Result:** Complete. Pause for a commit before beginning another milestone.
+
+### 2026-10-18 - Executable Service Foundation
+
+**Milestone:** M0
+
+**Plan**
+
+- Adapt the hica-registry service shape without carrying over registry-specific
+   authentication or tarball storage.
+- Add idempotent SQLite bootstrap, an in-process route table, a JSON error
+   envelope, and `GET /health`.
+- Build and exercise the native binary through a real HTTP socket.
+- Align Docker and CI with the ConsentLoop runtime and actual test naming.
+
+**Do**
+
+- Added a thin server entry point with configurable `CONSENT_LOOP_DB_PATH`.
+- Added an idempotent schema marker and database readiness check.
+- Added separately dispatchable routes with JSON health and error responses.
+- Added focused foundation tests and a live health integration script.
+- Adapted Docker Compose and CI from hica-registry, removing registry-only
+   settings and correcting test discovery and smoke-container cleanup.
+- Declared `linux/amd64` as the container deployment platform.
+
+**Test**
+
+- `hica test tests/foundation_test.hc`: 3/3 tests passed.
+- `hica fmt --check` passed for all four M0 Hica artifacts.
+- `hica analyse` reported no warnings or penalties and a 100/100 quality index
+   for all four M0 Hica artifacts.
+- `hica check src/main.hc`, `hica build`, and shell syntax validation passed.
+
+**Verify**
+
+- The native `src/main` binary started with a temporary SQLite database.
+- A real HTTP request to `/health` returned service and database status `ok`.
+- The integration script stopped the process and removed temporary database
+   files after verification.
+- The Docker image is intentionally not a local ARM acceptance gate; GitHub CI
+   builds and smoke-tests it on the x86-64 deployment architecture.
+
+**Reflect**
+
+- The hica-registry boundary split transfers cleanly to ConsentLoop when
+   registry-specific concerns are removed.
+- The native integration test gives fast local confidence without requiring
+   cross-architecture Docker emulation.
+- The copied CI smoke test referenced the wrong container during cleanup; using
+   a trap makes cleanup reliable on both success and failure.
+- M0 now supplies the process, database, route, and test boundaries required by
+   proposal persistence and API milestones.
 
 **Result:** Complete. Pause for a commit before beginning another milestone.
 

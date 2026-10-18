@@ -1,0 +1,12 @@
+.git
+.github
+.hica
+.koka
+docs
+examples
+tests
+*.db
+*.db-shm
+*.db-wal
+*.kki
+src/main

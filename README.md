@@ -16,3 +16,23 @@ ConsentLoop proposals.
 hica test tests/proposal_codec_test.hc
 hica run examples/proposal_codec.hc
 ```
+
+## Service Foundation
+
+Build and run the native service:
+
+```sh
+hica build
+CONSENT_LOOP_DB_PATH=./consent-loop.db ./src/main
+curl http://localhost:8080/health
+```
+
+Run the foundation and live health checks:
+
+```sh
+hica test tests/foundation_test.hc
+./tests/health_integration.sh
+```
+
+The Docker image targets `linux/amd64` for deployment. On other architectures,
+use the native workflow above; CI builds and smoke-tests the x86-64 image.
