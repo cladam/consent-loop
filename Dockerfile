@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 debian:bookworm-slim AS builder
+FROM debian:bookworm-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential ca-certificates curl \
@@ -23,7 +23,7 @@ COPY src ./src
 RUN hica build -o consent-loop \
     && test -x /src/consent-loop
 
-FROM --platform=linux/amd64 debian:bookworm-slim
+FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl \
