@@ -1,5 +1,12 @@
 .DS_Store
 .koka
+.build
+
+src/*
+!src/*.hc
+
+tests/*
+!tests/*.hc
 
 # tbdflow intent log (local-only, never committed)
 .tbdflow-intent.json

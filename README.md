@@ -6,3 +6,13 @@ ConsentLoop is a lightweight, friction-first decision engine designed to elimina
 
 - [Product requirements](docs/PRD-ConsentLoop.md)
 - [Development plan and log](docs/DEVELOPMENT.md)
+
+## Proposal Codec
+
+Milestone M1 provides typed decoding, validation, and canonical HML emission for
+ConsentLoop proposals.
+
+```sh
+hica test tests/proposal_codec_test.hc
+hica run examples/proposal_codec.hc
+```

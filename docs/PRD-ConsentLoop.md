@@ -91,6 +91,7 @@ The engine exposes an **HTTP API** written in `hica` that receives raw **HML** p
 
 ```hica
 #hml 0.3
+#text: amendment
 #namespace decision: "https://hica.dev/schemas/decision/v1"
 
 @proposal(id: "PROP-042", version: "1.1", status: "refinement") {
