@@ -44,5 +44,5 @@ active version separately from immutable history.
 
 ```sh
 hica test tests/proposal_store_test.hc
-hica run examples/proposal_store.hc
+hica run examples/proposal_demo.hc
 ```

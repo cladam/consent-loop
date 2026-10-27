@@ -226,7 +226,7 @@ atomically.
 - `src/db.hc`
 - `src/proposal_store.hc`
 - `tests/proposal_store_test.hc`
-- `examples/proposal_store.hc`
+- `examples/proposal_demo.hc`
 - `README.md`
 - `docs/PRD-ConsentLoop.md`
 
@@ -240,6 +240,8 @@ and persists canonical version `1.0`.
 **Plan**
 
 - Add the submission handler and route.
+- Directly import `proposal_hml` from `main.hc` and `routes.hc` until hica includes
+   transitive local imports in its Koka module list.
 - Enforce initial version and lifecycle invariants in the domain layer.
 - Return canonical HML on success and structured JSON errors on failure.
 - Define duplicate submission behavior explicitly.
@@ -581,7 +583,7 @@ than rewriting the historical reasoning.
 
 **Verify**
 
-- `hica run examples/proposal_store.hc` created two revisions in memory.
+- `hica run examples/proposal_demo.hc` created two revisions in memory.
 - The example reported `1.1` as active and printed history in insertion order:
    `1.0 submission`, then `1.1 review`.
 
@@ -595,9 +597,12 @@ than rewriting the historical reasoning.
    abstraction is needed.
 - Keeping HML encoding out of `db.hc` prevents the server bootstrap from taking
    a transitive dependency on codec internals; the typed adapter owns that edge.
-- A typed executable combining the HML adapter and SQLite blocks in Koka 3.2.3
-   with an MVar error even though test mode passes. The reproduction is recorded
-   in `docs/HICA-BUG-mixed-hml-sqlite-mvar.md` and is an explicit M3 risk.
+- hica omits transitive local imports from its Koka module list. Test mode masked
+   this because the store test imports the codec directly; M3 entry modules must
+   use the documented direct-import workaround. See
+   `docs/HICA-BUG-transitive-local-imports.md`.
+- The persistence example was renamed to `proposal_demo.hc` because sharing the
+   `proposal_store` module basename with `src/` can resolve the wrong Koka module.
 - Persistence intentionally does not decide whether versions move forward or
    whether lifecycle transitions are legal. Those rules remain in M4 and M5.
 
