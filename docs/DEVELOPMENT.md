@@ -26,6 +26,30 @@ Testing and verification are deliberately separate. Tests establish repeatable
 correctness; verification confirms that the delivered behavior satisfies the
 PRD from a caller's perspective.
 
+### Executable Acceptance Specifications
+
+Choreo is the public-boundary acceptance harness: the specification itself is
+executable. `tests/health.chor` and `tests/submission.chor` cover the implemented
+M0-M3 HTTP behavior, including mandatory amendments for dissent and unchanged
+SQLite state after rejected requests. Their tasks hold transport and persistence
+drivers; scenarios describe the behavior. Focused `tests/*_test.hc` unit tests
+remain in place.
+
+Run `make test-acceptance` locally and in CI. The lifecycle runner builds once,
+owns a service process and disposable database, verifies readiness, and cleans
+up on exit. Existing health/submission integration entry points select the
+corresponding Choreo suite. Future milestones must extend the executable
+specifications when their endpoints become available; planned PRD behavior is
+not represented as already passing.
+
+With Choreo 0.15, use JSON-path assertions for JSON fields and
+`response_body_matches` for HML containing quoted attributes. Escaped quotes are
+not decoded by `response_body_equals_json` or `response_body_contains`.
+`given` conditions are checked before its actions: assert a setup command's
+exit status in `then`, not alongside that command in `given`. Verify zero
+skipped tests as well as a successful exit; unmet prerequisites can otherwise
+produce a successful run with skipped cases.
+
 ### Milestone Gate
 
 A milestone is complete only when:

@@ -7,6 +7,47 @@ ConsentLoop is a lightweight, friction-first decision engine designed to elimina
 - [Product requirements](docs/PRD-ConsentLoop.md)
 - [Development plan and log](docs/DEVELOPMENT.md)
 
+## Executable Acceptance Specifications
+
+[Choreo](https://github.com/cladam/choreo) is the BDD acceptance-test runner:
+the specification is the executable. The `.chor` scenarios call the real HTTP
+API and check observable behavior; hica unit tests remain the focused checks for
+the codec, domain, persistence, and in-process routes.
+
+Install Choreo 0.15.0 (requires Rust/Cargo), then run:
+
+```sh
+cargo install --locked choreo --version 0.15.0
+make test-acceptance
+```
+
+The runner also requires `hica`, `curl`, and the `sqlite3` CLI. It builds the
+service once, starts it with a fresh temporary SQLite database, waits for
+readiness, and stops the process and removes temporary files on exit. Port 8080
+must be free; the runner refuses to test against an existing listener.
+
+- [Service readiness](tests/health.chor) specifies HTTP and SQLite health.
+- [Proposal submission](tests/submission.chor) specifies canonical version `1.0`,
+  initial history, persistence, duplicate protection, malformed/invalid HML,
+  participant uniqueness, comfort-level bounds, and mandatory amendments for
+  dissent. Rejected requests must leave the entire stored audit trail unchanged.
+
+Scenarios run sequentially against one disposable database. CI runs both suites.
+Choreo writes its reports under the ignored `reports/` directory. The existing
+`health_integration.sh` and `submission_integration.sh` commands run the
+corresponding Choreo suite through the same lifecycle runner.
+
+Syntax can be checked without starting the service:
+
+```sh
+choreo validate --file tests/health.chor
+choreo validate --file tests/submission.chor
+```
+
+Coverage follows the implemented milestones M0-M3. Evaluation, amendment
+resolution/version bumps, and proposal retrieval remain planned behavior, not
+passing acceptance claims; add their executable scenarios as those APIs land.
+
 ## Proposal Codec
 
 Milestone M1 provides typed decoding, validation, and canonical HML emission for

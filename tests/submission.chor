@@ -1,0 +1,190 @@
+feature "Proposal submission establishes an immutable starting point"
+
+actors: Web, Terminal
+
+env {
+    CONSENT_LOOP_BASE_URL
+    CONSENT_LOOP_DB_PATH
+    CONSENT_LOOP_TEST_DIR
+}
+
+settings {
+    timeout_seconds = 30
+    stop_on_failure = true
+    shell_path = "/bin/bash"
+}
+
+background {
+    Web set_header "Content-Type" "application/hml"
+}
+
+task submit_proposal(id, participants) {
+    Web http_post "${CONSENT_LOOP_BASE_URL}/v1/proposals/submit" with_body "#hml 0.3\n#text: amendment\n#namespace decision: \"https://hica.dev/schemas/decision/v1\"\n@proposal(id: \"${id}\", version: \"1.1\", status: \"refinement\") {\n  title: \"Migrate services to a trunk-based monorepo\"\n  created: 2026-06-06T10:00:00Z\n  cooling-period: 24h\n  @body {\n    Add a mandatory prerequisite for workspace caching.\n  }\n  @participants {\n    ${participants}\n  }\n  @references {\n    @ref(type: \"URL\", value: \"https://example.com/issues/104\", description: \"Benchmark\")\n  }\n  @history {\n    @revision(version: \"1.1\", event: \"amendment-adopted\", timestamp: 2026-06-06T14:30:00Z)\n  }\n}"
+}
+
+task snapshot_store() {
+    Terminal run "sqlite3 \"${CONSENT_LOOP_DB_PATH}\" .dump > \"${CONSENT_LOOP_TEST_DIR}/before.sql\""
+}
+
+task compare_store() {
+    Terminal run "sqlite3 \"${CONSENT_LOOP_DB_PATH}\" .dump > \"${CONSENT_LOOP_TEST_DIR}/after.sql\" && diff -u \"${CONSENT_LOOP_TEST_DIR}/before.sql\" \"${CONSENT_LOOP_TEST_DIR}/after.sql\""
+}
+
+task proposal_error(code) {
+    Web response_status_is 400
+    Web json_path at "/error/code" equals "${code}"
+    Web json_response at "/error/message" is_a_string
+}
+
+# Choreo's Web actor has no response-header assertion, so curl exposes this
+# part of the HTTP contract while reusing an already canonical proposal.
+task submit_canonical_copy_with_headers() {
+    Terminal run "set -o pipefail; sqlite3 \"${CONSENT_LOOP_DB_PATH}\" \"SELECT replace(canonical_hml, 'PROP-042', 'PROP-MEDIA') FROM proposal_revisions WHERE proposal_id = 'PROP-042';\" | curl --silent --show-error --include --header 'Content-Type: application/hml' --data-binary @- '${CONSENT_LOOP_BASE_URL}/v1/proposals/submit'"
+}
+
+scenario "A new proposal starts at version 1.0 regardless of supplied lineage" {
+    test SubmitProposal "Submission returns canonical HML without losing proposal content" {
+        given:
+            Test can_start
+        when:
+            submit_proposal("PROP-042", "@participant(user: \"alex\", level: 3)\n    @participant(user: \"sofia\", level: 1) {\n      @amendment(target-version: \"1.1\", status: \"adopted\") {\n        Add package-level caching before migration.\n      }\n    }\n    @participant(user: \"elias\", level: 2)")
+        then:
+            Web response_status_is 201
+            Web response_body_contains "#hml 0.3"
+            Web response_body_matches "@proposal\\(id: \"PROP-042\", version: \"1.0\", status: \"submission\"\\)"
+            Web response_body_contains "Migrate services to a trunk-based monorepo"
+            Web response_body_contains "Add a mandatory prerequisite for workspace caching."
+            Web response_body_contains "Add package-level caching before migration."
+            Web response_body_contains "https://example.com/issues/104"
+            Web response_body_matches "(?s)@history\\s*\\{\\s*@revision\\(version: \"1.0\", event: \"submitted\", timestamp: [^)]+\\)\\s*(\\{\\s*\\})?\\s*\\}"
+    }
+
+    test PersistInitialRevision "SQLite contains exactly one active submission revision" {
+        given:
+            Test has_succeeded SubmitProposal
+        when:
+            Terminal run "sqlite3 \"${CONSENT_LOOP_DB_PATH}\" \"SELECT p.proposal_id, p.active_version, p.status, count(r.id), min(r.version), min(r.status) FROM proposals p JOIN proposal_revisions r USING (proposal_id) GROUP BY p.proposal_id;\""
+        then:
+            Terminal last_command succeeded
+            Terminal output_equals "PROP-042|1.0|submission|1|1.0|submission"
+    }
+
+    test DuplicateProposal "Submitting an existing identity returns a conflict" {
+        given:
+            Test has_succeeded PersistInitialRevision
+            snapshot_store()
+        when:
+            submit_proposal("PROP-042", "@participant(user: \"alex\", level: 2)")
+        then:
+            Terminal last_command succeeded
+            Web response_status_is 409
+            Web json_path at "/error/code" equals "proposal_exists"
+            Web json_response at "/error/message" is_a_string
+    }
+
+    test PreserveOriginal "A conflict leaves every stored row and canonical payload unchanged" {
+        given:
+            Test has_succeeded DuplicateProposal
+        when:
+            compare_store()
+        then:
+            Terminal last_command succeeded
+    }
+}
+
+scenario "Invalid documents are rejected without touching the audit trail" {
+    test MalformedHml "Broken HML syntax is distinguished from domain validation" {
+        given:
+            snapshot_store()
+        when:
+            Web http_post "${CONSENT_LOOP_BASE_URL}/v1/proposals/submit" with_body "@proposal(id: \"broken\""
+        then:
+            Terminal last_command succeeded
+            proposal_error("invalid_hml")
+    }
+
+    test MissingTitle "A syntactically valid proposal must include its required fields" {
+        given:
+            Test has_succeeded MalformedHml
+        when:
+            Web http_post "${CONSENT_LOOP_BASE_URL}/v1/proposals/submit" with_body "#hml 0.3\n#namespace decision: \"https://hica.dev/schemas/decision/v1\"\n@proposal(id: \"MISSING-TITLE\", version: \"1.0\", status: \"submission\") {\n  created: 2026-06-06T10:00:00Z\n}"
+        then:
+            proposal_error("invalid_proposal")
+            Web response_body_contains "title"
+    }
+
+    test InvalidComfortLevel "Comfort levels outside zero through three are rejected" {
+        given:
+            Test has_succeeded MissingTitle
+        when:
+            submit_proposal("INVALID-LEVEL", "@participant(user: \"alex\", level: 4)")
+        then:
+            proposal_error("invalid_proposal")
+            Web response_body_contains "outside 0..3"
+    }
+
+    test DuplicateParticipant "Each participant has only one equal standing in the pool" {
+        given:
+            Test has_succeeded InvalidComfortLevel
+        when:
+            submit_proposal("DUPLICATE-PARTICIPANT", "@participant(user: \"alex\", level: 2)\n    @participant(user: \"alex\", level: 3)")
+        then:
+            proposal_error("invalid_proposal")
+            Web response_body_contains "duplicate participant"
+    }
+
+    test InvalidDocumentsLeaveNoTrace "Validation failures create no proposals or revisions" {
+        given:
+            Test has_succeeded DuplicateParticipant
+        when:
+            compare_store()
+        then:
+            Terminal last_command succeeded
+    }
+}
+
+scenario "Dissent requires an actionable amendment" {
+    test BlockWithoutAmendment "Level 0 cannot be a silent downvote" {
+        given:
+            snapshot_store()
+        when:
+            submit_proposal("NO-AMENDMENT-0", "@participant(user: \"alex\", level: 0)")
+        then:
+            Terminal last_command succeeded
+            proposal_error("invalid_proposal")
+            Web response_body_contains "requires an amendment"
+    }
+
+    test HesitationWithoutAmendment "Level 1 also requires an actionable amendment" {
+        given:
+            Test has_succeeded BlockWithoutAmendment
+        when:
+            submit_proposal("NO-AMENDMENT-1", "@participant(user: \"alex\", level: 1)")
+        then:
+            proposal_error("invalid_proposal")
+            Web response_body_contains "requires an amendment"
+    }
+
+    test NoWriteForDissent "Neither rejected downvote changes stored proposals or revisions" {
+        given:
+            Test has_succeeded HesitationWithoutAmendment
+        when:
+            compare_store()
+        then:
+            Terminal last_command succeeded
+    }
+}
+
+scenario "Accepted proposals are returned in the HML media type" {
+    test HmlResponseType "A canonical proposal can be submitted under a new identity" {
+        given:
+            Test can_start
+        when:
+            submit_canonical_copy_with_headers()
+        then:
+            Terminal last_command succeeded
+            Terminal output_matches "HTTP/1[.][01] 201"
+            Terminal output_matches "(?i)content-type:[[:space:]]*application/hml"
+            Terminal output_contains "PROP-MEDIA"
+    }
+}

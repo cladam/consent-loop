@@ -1,4 +1,4 @@
-.PHONY: docker-build docker-push
+.PHONY: test-acceptance docker-build docker-push
 
 # Build the current source tree in a multi-stage Docker image.
 # Usage:
@@ -14,3 +14,6 @@ docker-build:
 #   make docker-push IMAGE=ghcr.io/cladam/consent-loop TAG=v0.3.0
 docker-push:
 	docker push $(IMAGE):$(TAG)
+
+test-acceptance:
+	./tests/choreo_integration.sh

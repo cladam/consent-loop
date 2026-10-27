@@ -35,7 +35,10 @@ jobs:
           hica --version
 
       - name: Install C library dependencies
-        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libmicrohttpd-dev libsqlite3-dev
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libmicrohttpd-dev libsqlite3-dev sqlite3
+
+      - name: Install Choreo
+        run: cargo install --locked choreo --version 0.15.0
 
       - name: Check formatting and analysis
         shell: bash
@@ -65,10 +68,8 @@ jobs:
           done
           exit $failed
 
-      - name: Run integration tests
-        run: |
-          chmod +x tests/health_integration.sh
-          ./tests/health_integration.sh
+      - name: Run executable acceptance specifications
+        run: make test-acceptance
 
   docker:
     name: Build Docker image and smoke test

@@ -1,0 +1,23 @@
+feature "ConsentLoop service readiness"
+
+actor Web
+
+env CONSENT_LOOP_BASE_URL
+
+settings {
+    timeout_seconds = 10
+    stop_on_failure = true
+}
+
+scenario "A caller can verify service and database readiness" {
+    test HealthyService "The running service reports a ready SQLite database" {
+        given:
+            Test can_start
+        when:
+            Web http_get "${CONSENT_LOOP_BASE_URL}/health"
+        then:
+            Web response_status_is 200
+            Web json_path at "/status" equals "ok"
+            Web json_path at "/db" equals "ok"
+    }
+}

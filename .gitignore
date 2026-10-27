@@ -8,6 +8,9 @@ src/*
 tests/*
 !tests/*.hc
 !tests/*.sh
+!tests/*.chor
+
+reports/
 
 examples/*
 !examples/*.hc
