@@ -87,6 +87,11 @@ When an amendment is attached, the author resolves it via one of two paths:
 
 The engine exposes an **HTTP API** written in `hica` that receives raw **HML** payloads, validates document structure, executes state machine transitions, and calculates internal impact logic.
 
+SQLite stores one active-version pointer per proposal and an immutable canonical
+HML payload for every accepted revision. A transaction inserts each revision and
+updates the active pointer together, preserving the complete audit chain if a
+write fails.
+
 ### Canonical HML Document Structure
 
 ```hica

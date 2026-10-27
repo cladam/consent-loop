@@ -9,5 +9,8 @@ tests/*
 !tests/*.hc
 !tests/*.sh
 
+examples/*
+!examples/*.hc
+
 # tbdflow intent log (local-only, never committed)
 .tbdflow-intent.json

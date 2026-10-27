@@ -221,7 +221,16 @@ atomically.
 
 **Exit criteria:** Persistence invariants hold independently of HTTP handlers.
 
-**Status:** Planned
+**Files touched**
+
+- `src/db.hc`
+- `src/proposal_store.hc`
+- `tests/proposal_store_test.hc`
+- `examples/proposal_store.hc`
+- `README.md`
+- `docs/PRD-ConsentLoop.md`
+
+**Status:** Complete
 
 ### M3 - Proposal Submission API
 
@@ -533,6 +542,64 @@ than rewriting the historical reasoning.
    a trap makes cleanup reliable on both success and failure.
 - M0 now supplies the process, database, route, and test boundaries required by
    proposal persistence and API milestones.
+
+**Result:** Complete. Pause for a commit before beginning another milestone.
+
+### 2026-10-22 - Immutable Proposal Store
+
+**Milestone:** M2
+
+**Plan**
+
+- Store canonical HML in immutable revision rows under a unique proposal/version
+   constraint.
+- Track active version and status in a separate proposal row.
+- Create and append revisions transactionally through the SQLite library.
+- Fetch the active revision and complete ordered history without HTTP concerns.
+
+**Do**
+
+- Added `proposals` and `proposal_revisions` tables, foreign keys, uniqueness,
+   history indexing, and schema migration version 2.
+- Added atomic create and append operations using `with_transaction`.
+- Added `proposal_store.hc` as the typed adapter from domain proposals to the
+   primitive canonical fields stored by `db.hc`.
+- Added active-revision and ordered-history queries returning indexed metadata
+   with byte-stable canonical HML.
+- Added an in-memory runnable example that prints active version `1.1` and the
+   ordered `1.0`, `1.1` revision chain.
+
+**Test**
+
+- Started with a red create/fetch test, then added red-green tests for duplicate
+   proposal ids, ordered append history, and duplicate-version rollback.
+- `hica test tests/proposal_store_test.hc`: 4/4 tests passed.
+- Every test uses a fresh in-memory SQLite database.
+- The suite proves canonical HML round-trips byte-for-byte and failed revision
+   writes leave both active state and history unchanged.
+- M2 Hica artifacts pass formatting and analysis with no findings.
+
+**Verify**
+
+- `hica run examples/proposal_store.hc` created two revisions in memory.
+- The example reported `1.1` as active and printed history in insertion order:
+   `1.0 submission`, then `1.1 review`.
+
+**Reflect**
+
+- Keeping canonical HML as the immutable payload avoids prematurely normalizing
+   nested proposal content while indexed columns support lookup and concurrency.
+- Inserting the revision before updating the active pointer makes uniqueness
+   failures naturally roll back without exposing partial state.
+- The SQLite library's transaction helper is sufficient; no custom transaction
+   abstraction is needed.
+- Keeping HML encoding out of `db.hc` prevents the server bootstrap from taking
+   a transitive dependency on codec internals; the typed adapter owns that edge.
+- A typed executable combining the HML adapter and SQLite blocks in Koka 3.2.3
+   with an MVar error even though test mode passes. The reproduction is recorded
+   in `docs/HICA-BUG-mixed-hml-sqlite-mvar.md` and is an explicit M3 risk.
+- Persistence intentionally does not decide whether versions move forward or
+   whether lifecycle transitions are legal. Those rules remain in M4 and M5.
 
 **Result:** Complete. Pause for a commit before beginning another milestone.
 

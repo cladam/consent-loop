@@ -36,3 +36,13 @@ hica test tests/foundation_test.hc
 
 The Docker image targets `linux/amd64` for deployment. On other architectures,
 use the native workflow above; CI builds and smoke-tests the x86-64 image.
+
+## Immutable Proposal Store
+
+Milestone M2 stores canonical proposal revisions in SQLite while tracking the
+active version separately from immutable history.
+
+```sh
+hica test tests/proposal_store_test.hc
+hica run examples/proposal_store.hc
+```
