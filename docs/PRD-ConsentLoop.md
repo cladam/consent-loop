@@ -144,6 +144,6 @@ write fails.
 The backend accepts HML input over HTTP endpoints to execute state checks and document mutations:
 
 * `GET /health`: Returns JSON service and SQLite readiness for deployment health checks.
-* `POST /v1/proposals/submit`: Parses raw HML, validates required tags, initializes state to `submission`, and returns the canonical `v1.0` HML document.
+* `POST /v1/proposals/submit`: Parses raw HML, validates required tags, initializes state to `submission`, persists one immutable `1.0` revision, and returns the canonical HML document as `201 application/hml`. Malformed HML and invalid proposal structure return distinct `400` JSON errors; an existing proposal id returns `409` without adding a revision.
 * `POST /v1/proposals/evaluate`: Accepts an updated HML document string containing updated participant states/amendments. Evaluates internal impact logic, executes minor/major version bumps, updates participant status, and returns the transitioned HML document.
 * `GET /v1/proposals/{id}`: Returns the current HML document state and complete revision history chain.

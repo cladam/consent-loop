@@ -259,6 +259,8 @@ and persists canonical version `1.0`.
 
 **Exit criteria:** The first PRD endpoint works end to end.
 
+**Status:** Complete
+
 **Status:** Planned
 
 ### M4 - Comfort Evaluation and Refinement
@@ -605,6 +607,64 @@ than rewriting the historical reasoning.
    `proposal_store` module basename with `src/` can resolve the wrong Koka module.
 - Persistence intentionally does not decide whether versions move forward or
    whether lifecycle transitions are legal. Those rules remain in M4 and M5.
+
+**Result:** Complete. Pause for a commit before beginning another milestone.
+
+### 2026-10-27 - Proposal Submission API
+
+**Milestone:** M3
+
+**Plan**
+
+- Accept raw HML at `POST /v1/proposals/submit` and preserve distinct syntax and
+   domain-validation failures.
+- Normalize caller-supplied lifecycle data to version `1.0`, `submission`, and
+   one initial revision before persistence.
+- Return canonical HML on success and reject duplicate proposal ids without
+   changing immutable history.
+
+**Do**
+
+- Added a pure domain initializer using the proposal's `created` timestamp for
+   its initial `submitted` revision.
+- Added the submission handler and route with `201 application/hml`, structured
+   `400` errors, duplicate-id `409`, and fallback storage `500` handling.
+- Added direct codec imports to executable and test entry modules as the
+   documented workaround for hica's transitive local-import bug.
+- Added focused in-process tests and a live HTTP integration script using a
+   temporary SQLite database.
+
+**Test**
+
+- Began with four red route tests against the unregistered endpoint.
+- `hica test tests/submission_test.hc`: 4/4 tests passed.
+- `hica test tests/foundation_test.hc`: 3/3 tests passed after adding the direct
+   codec import workaround required by the expanded route graph.
+- Existing codec and store suites passed, for 18/18 tests across four suites.
+- `hica check src/main.hc` and `hica build` passed.
+- Formatting passed for all touched Hica files; analysis reported no findings
+   and a 100/100 quality index for each.
+
+**Verify**
+
+- The in-process client received canonical version `1.0` in `submission` and
+   read the exact response bytes back from the active stored revision.
+- `tests/submission_integration.sh` built and started the native service, then
+   verified `201 application/hml`, one initial revision, and duplicate `409`
+   through real HTTP requests.
+
+**Reflect**
+
+- Initial submission is a domain operation, not an HTTP concern; callers cannot
+   choose the initial version, lifecycle state, or revision chain.
+- The proposal `created` timestamp is the deterministic initial revision time.
+   A server-observed timestamp can be added later if audit requirements demand
+   both authored and received times.
+- SQLite extended result code `1555` identifies duplicate proposal ids, allowing
+   unrelated storage failures to remain `500` responses.
+- Adding a transitive codec dependency to routes also affects route test entry
+   modules. Direct codec imports remain necessary until the documented hica bug
+   is fixed.
 
 **Result:** Complete. Pause for a commit before beginning another milestone.
 

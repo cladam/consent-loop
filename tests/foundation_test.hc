@@ -1,4 +1,5 @@
 import "../src/db"
+import "../src/proposal_hml"
 import "../src/routes"
 import "testclient"
 import "sqlite"

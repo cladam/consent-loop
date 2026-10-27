@@ -43,3 +43,18 @@ pub struct Proposal {
   history: list<Revision>,
   namespace_uri: string
 }
+
+pub fun initialize_submission(proposal: Proposal) : Proposal {
+  let version = "1.0"
+  Proposal {
+    ...proposal,
+    version: version,
+    status: Submission,
+    history: [Revision {
+      version: version,
+      event: "submitted",
+      timestamp: proposal.created,
+      note: ""
+    }]
+  }
+}

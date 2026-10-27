@@ -1,6 +1,7 @@
 import "web"
 import "sqlite"
 import "./db"
+import "./proposal_hml"
 import "./routes"
 
 fun run_loop(server: int) : () {

@@ -46,3 +46,15 @@ active version separately from immutable history.
 hica test tests/proposal_store_test.hc
 hica run examples/proposal_demo.hc
 ```
+
+## Proposal Submission API
+
+Milestone M3 accepts raw proposal HML at `POST /v1/proposals/submit`, normalizes
+it to canonical version `1.0` in `submission`, and stores its initial immutable
+revision. Successful requests return `201 application/hml`; duplicate proposal
+ids return a structured `409` JSON error.
+
+```sh
+hica test tests/submission_test.hc
+./tests/submission_integration.sh
+```
