@@ -5,6 +5,10 @@ pub type ProposalStatus {
   Passed
 }
 
+pub type ComfortEvaluationError {
+  MissingComfortAmendment(user: string)
+}
+
 pub struct Amendment {
   target_version: string,
   status: string,
@@ -56,5 +60,26 @@ pub fun initialize_submission(proposal: Proposal) : Proposal {
       timestamp: proposal.created,
       note: ""
     }]
+  }
+}
+
+pub fun evaluate_comfort(participants: list<Participant>) : result<ProposalStatus, ComfortEvaluationError> {
+  let missing = find(participants, (participant) =>
+    if participant.level == 0 || participant.level == 1 {
+      match participant.amendment {
+        None => true,
+        Some(amendment) => length(amendment.text) == 0
+      }
+    } else {
+      false
+    }
+  )
+  match missing {
+    Some(participant) => Err(MissingComfortAmendment(participant.user)),
+    None => if any(participants, (participant) => participant.level == 0 || participant.level == 1) {
+      Ok(Refinement)
+    } else {
+      Ok(Passed)
+    }
   }
 }

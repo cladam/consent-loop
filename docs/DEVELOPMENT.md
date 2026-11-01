@@ -285,8 +285,6 @@ and persists canonical version `1.0`.
 
 **Status:** Complete
 
-**Status:** Planned
-
 ### M4 - Comfort Evaluation and Refinement
 
 **Outcome:** Evaluation deterministically moves proposals to `passed` or
@@ -313,7 +311,7 @@ and persists canonical version `1.0`.
 
 **Exit criteria:** The central consent decision rule is complete and auditable.
 
-**Status:** Planned
+**Status:** In progress
 
 ### M5 - Amendment Resolution and Semantic Versioning
 
