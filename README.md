@@ -31,8 +31,11 @@ must be free; the runner refuses to test against an existing listener.
   initial history, persistence, duplicate protection, malformed/invalid HML,
   participant uniqueness, comfort-level bounds, and mandatory amendments for
   dissent. Rejected requests must leave the entire stored audit trail unchanged.
+- [Comfort evaluation](tests/evaluation.chor) specifies transition to `passed` or
+  `refinement`, explicit review window entry, same-version immutable storage,
+  stale version checks, and illegal transition rejection.
 
-Scenarios run sequentially against one disposable database. CI runs both suites.
+Scenarios run sequentially against one disposable database. CI runs the suites.
 Choreo writes its reports under the ignored `reports/` directory. The existing
 `health_integration.sh` and `submission_integration.sh` commands run the
 corresponding Choreo suite through the same lifecycle runner.
@@ -42,11 +45,12 @@ Syntax can be checked without starting the service:
 ```sh
 choreo validate --file tests/health.chor
 choreo validate --file tests/submission.chor
+choreo validate --file tests/evaluation.chor
 ```
 
-Coverage follows the implemented milestones M0-M3. Evaluation, amendment
-resolution/version bumps, and proposal retrieval remain planned behavior, not
-passing acceptance claims; add their executable scenarios as those APIs land.
+Coverage follows the implemented milestones M0-M4. Amendment resolution/version
+bumps and proposal retrieval remain planned behavior, not passing acceptance
+claims; add their executable scenarios as those APIs land.
 
 ## Proposal Codec
 
@@ -99,3 +103,18 @@ ids return a structured `409` JSON error.
 hica test tests/submission_test.hc
 ./tests/submission_integration.sh
 ```
+
+## Comfort Evaluation and Refinement
+
+Milestone M4 evaluates participant comfort levels at `POST /v1/proposals/evaluate`.
+Moving to `passed` requires all participants at Level 2 or 3; any valid Level 0 or 1
+response with an actionable amendment moves the proposal to `refinement`. Proposals
+can also explicitly enter `review`. Same-version transitions are stored immutably as
+distinct revisions in SQLite and tracked by `active_revision_id`.
+
+```sh
+hica test tests/comfort_evaluation_test.hc
+hica test tests/evaluation_test.hc
+hica run examples/comfort_evaluation.hc
+```
+

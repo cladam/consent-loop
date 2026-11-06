@@ -6,7 +6,10 @@ pub type ProposalStatus {
 }
 
 pub type ComfortEvaluationError {
-  MissingComfortAmendment(user: string)
+  MissingComfortAmendment(user: string),
+  IllegalStatusTransition(from_status: string, to_status: string),
+  StaleVersionMismatch(expected: string, actual: string),
+  ProposalIdMismatch(expected: string, actual: string)
 }
 
 pub struct Amendment {
@@ -80,6 +83,72 @@ pub fun evaluate_comfort(participants: list<Participant>) : result<ProposalStatu
       Ok(Refinement)
     } else {
       Ok(Passed)
+    }
+  }
+}
+
+pub fun status_to_string(status: ProposalStatus) : string => match status {
+  Submission => "submission",
+  Review => "review",
+  Refinement => "refinement",
+  Passed => "passed"
+}
+
+pub fun is_transition_legal(from_status: ProposalStatus, to_status: ProposalStatus) : bool => match (from_status, to_status) {
+  (Submission, Review) => true,
+  (Submission, Refinement) => true,
+  (Submission, Passed) => true,
+  (Review, Review) => true,
+  (Review, Refinement) => true,
+  (Review, Passed) => true,
+  _ => false
+}
+
+pub fun evaluate_proposal_transition(
+  active: Proposal,
+  incoming: Proposal,
+  timestamp: string
+) : result<Proposal, ComfortEvaluationError> {
+  if incoming.proposal_id != active.proposal_id {
+    Err(ProposalIdMismatch(active.proposal_id, incoming.proposal_id))
+  } else if incoming.version != active.version {
+    Err(StaleVersionMismatch(active.version, incoming.version))
+  } else {
+    let target_result = if incoming.status == Review && (active.status == Submission || active.status == Review) {
+      Ok(Review)
+    } else {
+      evaluate_comfort(incoming.participants)
+    }
+    match target_result {
+      Err(error) => Err(error),
+      Ok(target_status) => if !is_transition_legal(active.status, target_status) {
+        Err(IllegalStatusTransition(status_to_string(active.status), status_to_string(target_status)))
+      } else {
+        let event = match target_status {
+          Passed => "passed",
+          Refinement => "refinement",
+          Review => "review-started",
+          Submission => "submitted"
+        }
+        let note = match target_status {
+          Passed => "All participants consented.",
+          Refinement => "Reservations require refinement.",
+          Review => "Cooling review period started.",
+          Submission => ""
+        }
+        let new_revision = Revision {
+          version: active.version,
+          event: event,
+          timestamp: timestamp,
+          note: note
+        }
+        Ok(Proposal {
+          ...active,
+          status: target_status,
+          participants: incoming.participants,
+          history: active.history + [new_revision]
+        })
+      }
     }
   }
 }

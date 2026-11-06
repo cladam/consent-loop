@@ -13,11 +13,12 @@ pub fun schema_sql() : string {
   "  applied_at TEXT NOT NULL DEFAULT (datetime('now'))" +
   ");" +
   "CREATE TABLE IF NOT EXISTS proposals (" +
-  "  proposal_id    TEXT PRIMARY KEY," +
-  "  active_version TEXT NOT NULL," +
-  "  status         TEXT NOT NULL," +
-  "  created_at     TEXT NOT NULL DEFAULT (datetime('now'))," +
-  "  updated_at     TEXT NOT NULL DEFAULT (datetime('now'))" +
+  "  proposal_id        TEXT PRIMARY KEY," +
+  "  active_revision_id INTEGER," +
+  "  active_version     TEXT NOT NULL," +
+  "  status             TEXT NOT NULL," +
+  "  created_at         TEXT NOT NULL DEFAULT (datetime('now'))," +
+  "  updated_at         TEXT NOT NULL DEFAULT (datetime('now'))" +
   ");" +
   "CREATE TABLE IF NOT EXISTS proposal_revisions (" +
   "  id            INTEGER PRIMARY KEY," +
@@ -25,13 +26,13 @@ pub fun schema_sql() : string {
   "  version       TEXT NOT NULL," +
   "  status        TEXT NOT NULL," +
   "  canonical_hml TEXT NOT NULL," +
-  "  recorded_at   TEXT NOT NULL DEFAULT (datetime('now'))," +
-  "  UNIQUE(proposal_id, version)" +
+  "  recorded_at   TEXT NOT NULL DEFAULT (datetime('now'))" +
   ");" +
   "CREATE INDEX IF NOT EXISTS idx_proposal_revisions_history " +
   "ON proposal_revisions(proposal_id, id);" +
   "INSERT OR IGNORE INTO schema_migrations(version) VALUES (1);" +
-  "INSERT OR IGNORE INTO schema_migrations(version) VALUES (2);"
+  "INSERT OR IGNORE INTO schema_migrations(version) VALUES (2);" +
+  "INSERT OR IGNORE INTO schema_migrations(version) VALUES (3);"
 }
 
 pub fun init_db(db) => sqlite_exec_batch(db, schema_sql())
@@ -47,7 +48,7 @@ pub fun insert_initial_revision(db: Db, proposal_id: string, version: string, st
     ]
   ) {
     Err(error) => Err(error),
-    Ok(_) => sqlite_exec_p(
+    Ok(_) => match sqlite_exec_p(
       db,
       "INSERT INTO proposal_revisions(proposal_id, version, status, canonical_hml) " +
       "VALUES (?, ?, ?, ?)",
@@ -57,7 +58,20 @@ pub fun insert_initial_revision(db: Db, proposal_id: string, version: string, st
         param(status),
         param(canonical_hml)
       ]
-    )
+    ) {
+      Err(error) => Err(error),
+      Ok(_) => {
+        let rev_id = sqlite_last_insert_id(db)
+        sqlite_exec_p(
+          db,
+          "UPDATE proposals SET active_revision_id = ? WHERE proposal_id = ?",
+          [
+            param(show(rev_id)),
+            param(proposal_id)
+          ]
+        )
+      }
+    }
   }
 }
 
@@ -67,13 +81,14 @@ pub fun create_stored_proposal(db: Db, proposal_id: string, version: string, sta
   )
 }
 
-pub fun update_active_revision(db: Db, proposal_id: string, version: string, status: string) {
+pub fun update_active_revision(db: Db, proposal_id: string, rev_id: int, version: string, status: string) {
   match sqlite_exec_p(
     db,
     "UPDATE proposals " +
-    "SET active_version = ?, status = ?, updated_at = datetime('now') " +
+    "SET active_revision_id = ?, active_version = ?, status = ?, updated_at = datetime('now') " +
     "WHERE proposal_id = ?",
     [
+      param(show(rev_id)),
       param(version),
       param(status),
       param(proposal_id)
@@ -101,7 +116,10 @@ pub fun insert_appended_revision(db: Db, proposal_id: string, version: string, s
     ]
   ) {
     Err(error) => Err(error),
-    Ok(_) => update_active_revision(db, proposal_id, version, status)
+    Ok(_) => {
+      let rev_id = sqlite_last_insert_id(db)
+      update_active_revision(db, proposal_id, rev_id, version, status)
+    }
   }
 }
 
@@ -125,7 +143,7 @@ pub fun fetch_active_revision(db: Db, proposal_id: string) {
     "SELECT r.version, r.status, r.canonical_hml " +
     "FROM proposals p " +
     "JOIN proposal_revisions r " +
-    "ON r.proposal_id = p.proposal_id AND r.version = p.active_version " +
+    "ON r.id = p.active_revision_id " +
     "WHERE p.proposal_id = ?",
     [param(proposal_id)]
   ) {

@@ -1,0 +1,169 @@
+feature "Proposal comfort evaluation executes immutable lifecycle transitions"
+
+actors: Web, Terminal
+
+env {
+    CONSENT_LOOP_BASE_URL
+    CONSENT_LOOP_DB_PATH
+    CONSENT_LOOP_TEST_DIR
+}
+
+settings {
+    timeout_seconds = 30
+    stop_on_failure = true
+    shell_path = "/bin/bash"
+}
+
+background {
+    Web set_header "Content-Type" "application/hml"
+}
+
+task submit_proposal(id, participants) {
+    Web http_post "${CONSENT_LOOP_BASE_URL}/v1/proposals/submit" with_body "#hml 0.3\n#text: amendment\n#namespace decision: \"https://hica.dev/schemas/decision/v1\"\n@proposal(id: \"${id}\", version: \"1.0\", status: \"submission\") {\n  title: \"Trunk-based workflow\"\n  created: 2026-06-06T10:00:00Z\n  cooling-period: 24h\n  @body {\n    Adopt trunk-based continuous integration.\n  }\n  @participants {\n    ${participants}\n  }\n  @references {}\n  @history {\n    @revision(version: \"1.0\", event: \"submitted\", timestamp: 2026-06-06T10:00:00Z)\n  }\n}"
+}
+
+task evaluate_proposal(id, version, status, participants) {
+    Web http_post "${CONSENT_LOOP_BASE_URL}/v1/proposals/evaluate" with_body "#hml 0.3\n#text: amendment\n#namespace decision: \"https://hica.dev/schemas/decision/v1\"\n@proposal(id: \"${id}\", version: \"${version}\", status: \"${status}\") {\n  title: \"Trunk-based workflow\"\n  created: 2026-06-06T10:00:00Z\n  cooling-period: 24h\n  @body {\n    Adopt trunk-based continuous integration.\n  }\n  @participants {\n    ${participants}\n  }\n  @references {}\n  @history {\n    @revision(version: \"${version}\", event: \"submitted\", timestamp: 2026-06-06T10:00:00Z)\n  }\n}"
+}
+
+scenario "All comfortable participants transition proposal to passed" {
+    test SubmitForPassing "Initial proposal is submitted successfully" {
+        given:
+            Test can_start
+        when:
+            submit_proposal("PROP-PASS", "@participant(user: \"alex\", level: 3)")
+        then:
+            Web response_status_is 201
+            Web response_body_matches "@proposal\\(id: \"PROP-PASS\", version: \"1.0\", status: \"submission\"\\)"
+    }
+
+    test EvaluatePassed "Consensual comfort levels transition proposal to passed" {
+        given:
+            Test has_succeeded SubmitForPassing
+        when:
+            evaluate_proposal("PROP-PASS", "1.0", "submission", "@participant(user: \"alex\", level: 3)\n    @participant(user: \"sofia\", level: 2)")
+        then:
+            Web response_status_is 200
+            Web response_body_matches "@proposal\\(id: \"PROP-PASS\", version: \"1.0\", status: \"passed\"\\)"
+            Web response_body_matches "(?s)@history\\s*\\{.*@revision\\(version: \"1.0\", event: \"submitted\",.*@revision\\(version: \"1.0\", event: \"passed\","
+    }
+
+    test CheckPassedStorage "SQLite store records active status as passed with two revisions" {
+        given:
+            Test has_succeeded EvaluatePassed
+        when:
+            Terminal run "sqlite3 \"${CONSENT_LOOP_DB_PATH}\" \"SELECT status, active_version FROM proposals WHERE proposal_id = 'PROP-PASS'; SELECT count(*) FROM proposal_revisions WHERE proposal_id = 'PROP-PASS';\""
+        then:
+            Terminal last_command succeeded
+            Terminal output_contains "passed|1.0"
+            Terminal output_contains "2"
+    }
+}
+
+scenario "Dissenting participant with amendment transitions proposal to refinement" {
+    test SubmitForRefinement "Initial proposal is submitted successfully" {
+        given:
+            Test can_start
+        when:
+            submit_proposal("PROP-REFINE", "@participant(user: \"alex\", level: 3)")
+        then:
+            Web response_status_is 201
+    }
+
+    test EvaluateRefinement "Hesitant participant moves proposal to refinement" {
+        given:
+            Test has_succeeded SubmitForRefinement
+        when:
+            evaluate_proposal("PROP-REFINE", "1.0", "submission", "@participant(user: \"alex\", level: 3)\n    @participant(user: \"sofia\", level: 1) {\n      @amendment(target-version: \"1.0\", status: \"proposed\") {\n        Add safety guardrails.\n      }\n    }")
+        then:
+            Web response_status_is 200
+            Web response_body_matches "@proposal\\(id: \"PROP-REFINE\", version: \"1.0\", status: \"refinement\"\\)"
+            Web response_body_matches "(?s)@history\\s*\\{.*@revision\\(version: \"1.0\", event: \"submitted\",.*@revision\\(version: \"1.0\", event: \"refinement\","
+    }
+
+    test CheckRefinementStorage "SQLite store records active status as refinement with two revisions" {
+        given:
+            Test has_succeeded EvaluateRefinement
+        when:
+            Terminal run "sqlite3 \"${CONSENT_LOOP_DB_PATH}\" \"SELECT status, active_version FROM proposals WHERE proposal_id = 'PROP-REFINE'; SELECT count(*) FROM proposal_revisions WHERE proposal_id = 'PROP-REFINE';\""
+        then:
+            Terminal last_command succeeded
+            Terminal output_contains "refinement|1.0"
+            Terminal output_contains "2"
+    }
+}
+
+scenario "Submission can explicitly enter review before evaluation" {
+    test SubmitForReview "Initial proposal is submitted successfully" {
+        given:
+            Test can_start
+        when:
+            submit_proposal("PROP-REV", "@participant(user: \"alex\", level: 3)")
+        then:
+            Web response_status_is 201
+    }
+
+    test EnterReview "Proposal enters review cooling period" {
+        given:
+            Test has_succeeded SubmitForReview
+        when:
+            evaluate_proposal("PROP-REV", "1.0", "review", "@participant(user: \"alex\", level: 3)")
+        then:
+            Web response_status_is 200
+            Web response_body_matches "@proposal\\(id: \"PROP-REV\", version: \"1.0\", status: \"review\"\\)"
+            Web response_body_matches "(?s)@history\\s*\\{.*@revision\\(version: \"1.0\", event: \"submitted\",.*@revision\\(version: \"1.0\", event: \"review-started\","
+    }
+
+    test EvaluateFromReview "Review proposal transitions to passed upon consensus" {
+        given:
+            Test has_succeeded EnterReview
+        when:
+            evaluate_proposal("PROP-REV", "1.0", "submission", "@participant(user: \"alex\", level: 3)\n    @participant(user: \"sofia\", level: 2)")
+        then:
+            Web response_status_is 200
+            Web response_body_matches "@proposal\\(id: \"PROP-REV\", version: \"1.0\", status: \"passed\"\\)"
+    }
+
+    test CheckReviewStorage "SQLite store records all three revisions immutably" {
+        given:
+            Test has_succeeded EvaluateFromReview
+        when:
+            Terminal run "sqlite3 \"${CONSENT_LOOP_DB_PATH}\" \"SELECT count(*) FROM proposal_revisions WHERE proposal_id = 'PROP-REV';\""
+        then:
+            Terminal last_command succeeded
+            Terminal output_contains "3"
+    }
+}
+
+scenario "Invalid evaluation attempts do not corrupt state" {
+    test StaleVersionRejected "Evaluating against a stale version returns 409" {
+        given:
+            Test can_start
+        when:
+            evaluate_proposal("PROP-PASS", "0.9", "submission", "@participant(user: \"alex\", level: 3)")
+        then:
+            Web response_status_is 409
+            Web json_path at "/error/code" equals "stale_version"
+    }
+
+    test UnknownProposalRejected "Evaluating an unknown proposal returns 404" {
+        given:
+            Test can_start
+        when:
+            evaluate_proposal("UNKNOWN-PROP", "1.0", "submission", "@participant(user: \"alex\", level: 3)")
+        then:
+            Web response_status_is 404
+            Web json_path at "/error/code" equals "proposal_not_found"
+    }
+
+    test AlreadyPassedRejected "Transitioning an already passed proposal returns 409" {
+        given:
+            Test can_start
+        when:
+            evaluate_proposal("PROP-PASS", "1.0", "submission", "@participant(user: \"alex\", level: 3)\n    @participant(user: \"sofia\", level: 2)")
+        then:
+            Web response_status_is 409
+            Web json_path at "/error/code" equals "illegal_transition"
+    }
+}
+

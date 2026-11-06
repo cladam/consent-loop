@@ -311,7 +311,22 @@ and persists canonical version `1.0`.
 
 **Exit criteria:** The central consent decision rule is complete and auditable.
 
-**Status:** In progress
+**Files touched**
+
+- `src/domain.hc`
+- `src/db.hc`
+- `src/routes.hc`
+- `tests/fixtures.hc`
+- `tests/comfort_evaluation_test.hc`
+- `tests/proposal_store_test.hc`
+- `tests/evaluation_test.hc`
+- `examples/comfort_evaluation.hc`
+- `tests/evaluation.chor`
+- `tests/choreo_integration.sh`
+- `README.md`
+- `docs/DEVELOPMENT.md`
+
+**Status:** Complete
 
 ### M5 - Amendment Resolution and Semantic Versioning
 
@@ -403,6 +418,10 @@ These questions should be answered at the milestone where they first control
 behavior, rather than silently encoded as implementation assumptions:
 
 1. What event moves a proposal from `submission` to `review`?
+   *Resolved in M4:* A proposal enters `review` either explicitly via
+   `POST /v1/proposals/evaluate` with status `review` (recording event
+   `review-started`), or by comfort check evaluation directly from `submission`
+   or `review` into `passed` or `refinement`.
 2. Who is the author at the API boundary, and how is identity established?
 3. Is the cooling period enforced by wall-clock time in v1, and what occurs when
    it expires?
@@ -687,6 +706,76 @@ than rewriting the historical reasoning.
 - Adding a transitive codec dependency to routes also affects route test entry
    modules. Direct codec imports remain necessary until the documented hica bug
    is fixed.
+
+**Result:** Complete. Pause for a commit before beginning another milestone.
+
+
+### 2026-11-05 - Comfort Evaluation and Refinement API
+
+**Milestone:** M4
+
+**Plan**
+
+- Decide how submission enters review and how same-version status transitions are
+  stored immutably.
+- Allow transition from `submission` to `review` explicitly, or evaluation from
+  `submission` or `review` directly to `passed` or `refinement`.
+- Require an actionable amendment for any Level 0 or Level 1 response.
+- Move to `passed` only when every participant is Level 2 or Level 3.
+- Move to `refinement` when any valid Level 0 or Level 1 response exists.
+- Migrate database schema: add `active_revision_id` to proposals, remove the
+  `UNIQUE(proposal_id, version)` constraint on revisions, and point to the
+  active revision by id so same-version transitions can be appended immutably.
+- Expose `POST /v1/proposals/evaluate` returning `200 application/hml` with the
+  canonical document and appended `@history` entry.
+
+**Do**
+
+- Added domain lifecycle checks and `evaluate_proposal_transition` in
+  `src/domain.hc`.
+- Added migration version 3 in `src/db.hc`, updating `insert_initial_revision`,
+  `update_active_revision`, and `fetch_active_revision` to track
+  `active_revision_id`.
+- Added `handle_evaluate` and `POST /v1/proposals/evaluate` in `src/routes.hc`.
+- Added `examples/comfort_evaluation.hc` demonstrating dissent leading to
+  refinement and consensus leading to passed on the same version `1.0`.
+- Added executable BDD acceptance scenarios in `tests/evaluation.chor` covering
+  passed consensus, refinement dissent, review entry, and rejection of stale
+  versions, unknown proposals, and illegal transitions.
+
+**Test**
+
+- Extended `tests/comfort_evaluation_test.hc` to 12 tests covering all comfort
+  levels, missing amendments, review entry, illegal transitions, and stale versions.
+- Updated `tests/proposal_store_test.hc` to 5 tests verifying same-version
+  revisions are stored immutably in ordered history and active pointer is updated.
+- Added `tests/evaluation_test.hc` with 5 focused in-process HTTP route tests.
+- All 36 unit tests pass across 6 suites.
+- All 27 acceptance scenarios pass across `tests/health.chor`,
+  `tests/submission.chor`, and `tests/evaluation.chor`.
+- All touched files pass `hica fmt --check` and `hica analyse` with 100/100 FP
+  quality scores.
+
+**Verify**
+
+- `hica run examples/comfort_evaluation.hc` prints active revision `1.0 refinement`
+  and the immutable revision history `1.0 submission` followed by `1.0 refinement`.
+- Acceptance runner `./tests/choreo_integration.sh` verifies the public boundary:
+  `PROP-PASS` moves to `passed` with 2 revisions, `PROP-REFINE` moves to
+  `refinement` with 2 revisions, `PROP-REV` enters `review` then `passed` with
+  3 revisions, and invalid attempts leave SQLite state untouched.
+
+**Reflect**
+
+- Same-version status transitions require revision identity to be decoupled from
+  semantic version numbers: `active_revision_id` provides an unambiguous pointer
+  to the active revision while preserving the append-only revision log.
+- Distinguishing `submission` from `review` permits an explicit cooling window
+  without requiring an extra HTTP endpoint beyond the PRD-defined `/evaluate`.
+- String literals in hica require escaping braces as `\{` and `\}` to prevent
+  accidental string interpolation syntax errors.
+- Milestone M4 delivers the complete central consent decision engine, preparing
+  for Milestone M5 (amendment adoption and directional shift semantic version bumps).
 
 **Result:** Complete. Pause for a commit before beginning another milestone.
 

@@ -12,7 +12,7 @@ for tool in hica choreo curl sqlite3; do
 done
 
 if [[ "$#" -eq 0 ]]; then
-  set -- tests/health.chor tests/submission.chor
+  set -- tests/health.chor tests/submission.chor tests/evaluation.chor
 fi
 
 for spec in "$@"; do

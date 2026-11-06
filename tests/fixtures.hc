@@ -29,3 +29,24 @@ pub fun valid_proposal_hml() : string {
   "  \}\n" +
   "\}"
 }
+
+pub fun evaluation_proposal_hml(id: string, version: string, status: string, participants: string) : string {
+  "#hml 0.3\n" +
+  "#text: amendment\n" +
+  "#namespace decision: \"https://hica.dev/schemas/decision/v1\"\n" +
+  "@proposal(id: \"" + id + "\", version: \"" + version + "\", status: \"" + status + "\") \{\n" +
+  "  title: \"Migrate services to a trunk-based monorepo\"\n" +
+  "  created: 2026-06-06T10:00:00Z\n" +
+  "  cooling-period: 24h\n" +
+  "  @body \{\n" +
+  "    Add a mandatory prerequisite for workspace caching.\n" +
+  "  \}\n" +
+  "  @participants \{\n" +
+  participants + "\n" +
+  "  \}\n" +
+  "  @references \{\}\n" +
+  "  @history \{\n" +
+  "    @revision(version: \"" + version + "\", event: \"submitted\", timestamp: 2026-06-06T10:00:00Z)\n" +
+  "  \}\n" +
+  "\}"
+}
