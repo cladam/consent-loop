@@ -34,6 +34,10 @@ must be free; the runner refuses to test against an existing listener.
 - [Comfort evaluation](tests/evaluation.chor) specifies transition to `passed` or
   `refinement`, explicit review window entry, same-version immutable storage,
   stale version checks, and illegal transition rejection.
+- [Amendment resolution](tests/resolution.chor) specifies minor version bumps for
+  adopted amendments with automatic transition to consent, major version bumps for
+  directional shifts with review restart, and rejection of wrong-version or
+  already resolved amendments.
 
 Scenarios run sequentially against one disposable database. CI runs the suites.
 Choreo writes its reports under the ignored `reports/` directory. The existing
@@ -46,11 +50,12 @@ Syntax can be checked without starting the service:
 choreo validate --file tests/health.chor
 choreo validate --file tests/submission.chor
 choreo validate --file tests/evaluation.chor
+choreo validate --file tests/resolution.chor
 ```
 
-Coverage follows the implemented milestones M0-M4. Amendment resolution/version
-bumps and proposal retrieval remain planned behavior, not passing acceptance
-claims; add their executable scenarios as those APIs land.
+Coverage follows the implemented milestones M0-M5. Proposal retrieval (M6)
+remains planned behavior, not passing acceptance claims; add executable
+scenarios as that API lands.
 
 ## Proposal Codec
 
@@ -118,3 +123,24 @@ hica test tests/evaluation_test.hc
 hica run examples/comfort_evaluation.hc
 ```
 
+
+
+## Amendment Resolution and Semantic Versioning
+
+Milestone M5 resolves amendments via `POST /v1/proposals/evaluate`:
+- **Amendment adoption** increments the minor version (`1.0` -> `1.1`), incorporates
+  the amendment wording, transitions the objector automatically to Level 2 (Consent),
+  and appends an `@history` entry with event `amendment-adopted`.
+- **Directional shifts** increment the major version (`1.x` -> `2.0`), reset all
+  participant comfort levels to unvoted (leaving the proposer at Level 3), restart
+  the cooling review window (`review` status), and append an `@history` entry with
+  event `directional-shift`.
+- Invalid attempts (wrong target versions, already resolved amendments, ambiguous
+  concurrent adoptions) are rejected with structured JSON errors leaving the audit
+  trail unchanged.
+
+```sh
+hica test tests/comfort_evaluation_test.hc
+hica test tests/evaluation_test.hc
+hica run examples/amendment_resolution.hc
+```

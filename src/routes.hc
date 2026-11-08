@@ -88,6 +88,12 @@ pub fun handle_evaluate(db, req) {
               api_error(409, "stale_version", "expected version " + expected + " but received " + actual),
             Err(IllegalStatusTransition(from_s, to_s)) =>
               api_error(409, "illegal_transition", "cannot transition proposal from " + from_s + " to " + to_s),
+            Err(WrongVersionAmendment(target_v, expected_v)) =>
+              api_error(400, "wrong_version_amendment", "amendment target version " + target_v + " does not match proposal version " + expected_v),
+            Err(AlreadyResolvedAmendment(user)) =>
+              api_error(409, "already_resolved", "amendment for participant '" + user + "' is already resolved"),
+            Err(AmbiguousAmendment(message)) =>
+              api_error(400, "ambiguous_amendment", message),
             Ok(transitioned) => {
               let canonical = encode_proposal(transitioned)
               match append_revision(db, transitioned) {

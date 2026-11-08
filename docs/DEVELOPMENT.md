@@ -354,7 +354,19 @@ version, participant state, and history event.
 
 **Exit criteria:** Both resolution paths in the PRD work end to end.
 
-**Status:** Planned
+**Files touched**
+
+- `src/domain.hc`
+- `src/routes.hc`
+- `tests/comfort_evaluation_test.hc`
+- `tests/evaluation_test.hc`
+- `examples/amendment_resolution.hc`
+- `tests/resolution.chor`
+- `tests/choreo_integration.sh`
+- `README.md`
+- `docs/DEVELOPMENT.md`
+
+**Status:** Complete
 
 ### M6 - Retrieval and Audit Trail
 
@@ -427,6 +439,13 @@ behavior, rather than silently encoded as implementation assumptions:
    it expires?
 4. How does the request distinguish amendment adoption from a directional
    rewrite?
+   *Resolved in M5:* In `POST /v1/proposals/evaluate`, incoming participant
+   amendments with status `adopted` signal amendment adoption, triggering a minor
+   version bump (`v1.0 -> v1.1`) and moving the objector automatically to Level 2
+   (Consent). Amendments with status `rejected`, incoming status `review` while in
+   `refinement`, or incoming revision event `directional-shift` signal a directional
+   rewrite, triggering a major version bump (`v1.x -> v2.0`), resetting participant
+   comfort levels, and restarting the cooling review period.
 5. What exactly belongs to the hidden impact evaluation beyond the explicit
    comfort-level rules in the PRD?
 6. How are concurrent evaluations of the same active version rejected or made
@@ -778,6 +797,54 @@ than rewriting the historical reasoning.
   for Milestone M5 (amendment adoption and directional shift semantic version bumps).
 
 **Result:** Complete. Pause for a commit before beginning another milestone.
+
+### 2026-11-07 - Amendment Resolution and Semantic Versioning
+
+**Milestone:** M5
+
+**Plan**
+
+- Adopt exact amendment wording as a minor version bump (`1.0 -> 1.1`, `1.9 -> 1.10`).
+- Move the originating objector automatically to Level 2 (Consent) upon adoption.
+- Represent a directional rewrite as a major version bump (`1.x -> 2.0`, `1.10 -> 2.0`).
+- Reset participant comfort levels and restart review after a major bump.
+- Reject ambiguous, already resolved, or wrong-version amendments with 400 and 409 responses.
+- Legalize lifecycle transitions from `Refinement` to `Refinement`, `Passed`, and `Review`.
+
+**Do**
+
+- Added `parse_semver`, `bump_minor_version`, and `bump_major_version` in `src/domain.hc`.
+- Added domain errors `WrongVersionAmendment`, `AlreadyResolvedAmendment`, and `AmbiguousAmendment` in `src/domain.hc`.
+- Implemented `handle_amendment_adoption` and `handle_directional_shift` in `src/domain.hc`.
+- Updated `is_transition_legal` in `src/domain.hc` to permit transitions from `Refinement`.
+- Mapped domain errors to HTTP 400 and 409 responses in `src/routes.hc`.
+- Created runnable artefact `examples/amendment_resolution.hc` demonstrating both adoption and directional shift paths to `passed`.
+- Created executable BDD acceptance scenarios in `tests/resolution.chor` covering adoption, directional shifts, and rejection of invalid attempts.
+- Optimized `./tests/choreo_integration.sh` to avoid redundant builds when binary is up to date and wired `tests/resolution.chor`.
+
+**Test**
+
+- Extended `tests/comfort_evaluation_test.hc` to 20 tests covering boundary bumps (`1.9 -> 1.10`, `1.10 -> 2.0`), adoption, directional shift, wrong version, already resolved, and ambiguity.
+- Extended `tests/evaluation_test.hc` to 10 in-process HTTP route tests covering the public endpoints, persistence, and error responses.
+- All 49 unit tests pass across 6 test suites.
+- All 42 acceptance scenarios pass across `tests/health.chor`, `tests/submission.chor`, `tests/evaluation.chor`, and `tests/resolution.chor`.
+- All touched files pass `hica fmt --check` and `hica analyse` with 100/100 FP quality scores.
+
+**Verify**
+
+- `hica run examples/amendment_resolution.hc` demonstrates both lifecycle paths:
+  `PROP-ADOPT-001` reaches `1.1 passed` with history `1.0 submission -> 1.0 refinement -> 1.1 refinement -> 1.1 passed`.
+  `PROP-SHIFT-002` reaches `2.0 passed` with history `1.0 submission -> 1.0 refinement -> 2.0 review -> 2.0 passed`.
+- `make test-acceptance` executes all 42 scenarios through the public HTTP boundary, verifying SQLite state and audit trails.
+
+**Reflect**
+
+- Distinguishing new amendment adoptions from existing canonical amendments: when a proposal has adopted an amendment and is in refinement or review, the adopted amendment is preserved in the canonical HML document without triggering repeated minor version increments unless a new adoption is explicitly submitted.
+- In Koka / hica code generation, field access `x.foo` translates to function call `foo(x)`. Local variables and parameter names must never shadow record field accessors (such as `amendment` or `user`).
+- Milestone M5 completes both PRD resolution pathways and semantic version lineage, paving the way for Milestone M6 (retrieval and audit trail via `GET /v1/proposals/{id}`).
+
+**Result:** Complete. Pause for a commit before beginning another milestone.
+
 
 ## Log Entry Template
 

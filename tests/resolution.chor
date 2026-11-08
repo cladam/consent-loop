@@ -1,0 +1,186 @@
+feature "Amendment resolution and semantic versioning"
+
+actors: Web, Terminal
+
+env {
+    CONSENT_LOOP_BASE_URL
+    CONSENT_LOOP_DB_PATH
+    CONSENT_LOOP_TEST_DIR
+}
+
+settings {
+    timeout_seconds = 30
+    stop_on_failure = true
+    shell_path = "/bin/bash"
+}
+
+background {
+    Web set_header "Content-Type" "application/hml"
+}
+
+task submit_proposal(id, participants) {
+    Web http_post "${CONSENT_LOOP_BASE_URL}/v1/proposals/submit" with_body "#hml 0.3\n#text: amendment\n#namespace decision: \"https://hica.dev/schemas/decision/v1\"\n@proposal(id: \"${id}\", version: \"1.0\", status: \"submission\") {\n  title: \"Continuous integration pipeline\"\n  created: 2026-06-06T10:00:00Z\n  cooling-period: 24h\n  @body {\n    Implement trunk-based CI.\n  }\n  @participants {\n    ${participants}\n  }\n  @references {}\n  @history {\n    @revision(version: \"1.0\", event: \"submitted\", timestamp: 2026-06-06T10:00:00Z)\n  }\n}"
+}
+
+task evaluate_proposal(id, version, status, participants) {
+    Web http_post "${CONSENT_LOOP_BASE_URL}/v1/proposals/evaluate" with_body "#hml 0.3\n#text: amendment\n#namespace decision: \"https://hica.dev/schemas/decision/v1\"\n@proposal(id: \"${id}\", version: \"${version}\", status: \"${status}\") {\n  title: \"Continuous integration pipeline\"\n  created: 2026-06-06T10:00:00Z\n  cooling-period: 24h\n  @body {\n    Implement trunk-based CI.\n  }\n  @participants {\n    ${participants}\n  }\n  @references {}\n  @history {\n    @revision(version: \"${version}\", event: \"submitted\", timestamp: 2026-06-06T10:00:00Z)\n  }\n}"
+}
+
+scenario "Amendment adoption bumps proposal to minor version and reaches passed" {
+    test SubmitForAdoption "Initial proposal is submitted successfully" {
+        given:
+            Test can_start
+        when:
+            submit_proposal("PROP-RES-ADOPT", "@participant(user: \"alex\", level: 3)")
+        then:
+            Web response_status_is 201
+    }
+
+    test EnterRefinement "Hesitant participant moves proposal to refinement" {
+        given:
+            Test has_succeeded SubmitForAdoption
+        when:
+            evaluate_proposal("PROP-RES-ADOPT", "1.0", "submission", "@participant(user: \"alex\", level: 3)\n    @participant(user: \"sofia\", level: 1) {\n      @amendment(target-version: \"1.0\", status: \"proposed\") {\n        Add workspace caching.\n      }\n    }")
+        then:
+            Web response_status_is 200
+            Web response_body_matches "@proposal\\(id: \"PROP-RES-ADOPT\", version: \"1.0\", status: \"refinement\"\\)"
+    }
+
+    test AdoptAmendment "Author adopts amendment bumping to version 1.1" {
+        given:
+            Test has_succeeded EnterRefinement
+        when:
+            evaluate_proposal("PROP-RES-ADOPT", "1.0", "refinement", "@participant(user: \"alex\", level: 3)\n    @participant(user: \"sofia\", level: 1) {\n      @amendment(target-version: \"1.0\", status: \"adopted\") {\n        Add workspace caching.\n      }\n    }")
+        then:
+            Web response_status_is 200
+            Web response_body_matches "@proposal\\(id: \"PROP-RES-ADOPT\", version: \"1.1\", status: \"refinement\"\\)"
+            Web response_body_matches "@participant\\(user: \"sofia\", level: 2\\)"
+            Web response_body_matches "(?s)@history\\s*\\{.*@revision\\(version: \"1.1\", event: \"amendment-adopted\","
+    }
+
+    test EvaluateAdoptedToPassed "Consensual comfort check transitions adopted proposal to passed" {
+        given:
+            Test has_succeeded AdoptAmendment
+        when:
+            evaluate_proposal("PROP-RES-ADOPT", "1.1", "submission", "@participant(user: \"alex\", level: 3)\n    @participant(user: \"sofia\", level: 2)")
+        then:
+            Web response_status_is 200
+            Web response_body_matches "@proposal\\(id: \"PROP-RES-ADOPT\", version: \"1.1\", status: \"passed\"\\)"
+            Web response_body_matches "(?s)@history\\s*\\{.*@revision\\(version: \"1.1\", event: \"passed\","
+    }
+
+    test CheckAdoptionStorage "SQLite records active version 1.1 passed with four revisions" {
+        given:
+            Test has_succeeded EvaluateAdoptedToPassed
+        when:
+            Terminal run "sqlite3 \"${CONSENT_LOOP_DB_PATH}\" \"SELECT status, active_version FROM proposals WHERE proposal_id = 'PROP-RES-ADOPT'; SELECT count(*) FROM proposal_revisions WHERE proposal_id = 'PROP-RES-ADOPT';\""
+        then:
+            Terminal last_command succeeded
+            Terminal output_contains "passed|1.1"
+            Terminal output_contains "4"
+    }
+}
+
+scenario "Directional shift bumps proposal to major version and restarts review" {
+    test SubmitForShift "Initial proposal is submitted successfully" {
+        given:
+            Test can_start
+        when:
+            submit_proposal("PROP-RES-SHIFT", "@participant(user: \"alex\", level: 3)")
+        then:
+            Web response_status_is 201
+    }
+
+    test ShiftDissent "Blocked participant moves proposal to refinement" {
+        given:
+            Test has_succeeded SubmitForShift
+        when:
+            evaluate_proposal("PROP-RES-SHIFT", "1.0", "submission", "@participant(user: \"alex\", level: 3)\n    @participant(user: \"sofia\", level: 0) {\n      @amendment(target-version: \"1.0\", status: \"proposed\") {\n        Core design objection.\n      }\n    }")
+        then:
+            Web response_status_is 200
+            Web response_body_matches "@proposal\\(id: \"PROP-RES-SHIFT\", version: \"1.0\", status: \"refinement\"\\)"
+    }
+
+    test ExecuteDirectionalShift "Author rejects amendment and shifts direction to version 2.0" {
+        given:
+            Test has_succeeded ShiftDissent
+        when:
+            evaluate_proposal("PROP-RES-SHIFT", "1.0", "refinement", "@participant(user: \"alex\", level: 3)\n    @participant(user: \"sofia\", level: 0) {\n      @amendment(target-version: \"1.0\", status: \"rejected\") {\n        Core design objection.\n      }\n    }")
+        then:
+            Web response_status_is 200
+            Web response_body_matches "@proposal\\(id: \"PROP-RES-SHIFT\", version: \"2.0\", status: \"review\"\\)"
+            Web response_body_matches "(?s)@history\\s*\\{.*@revision\\(version: \"2.0\", event: \"directional-shift\","
+    }
+
+    test EvaluateShiftedToPassed "Consensus on version 2.0 transitions proposal to passed" {
+        given:
+            Test has_succeeded ExecuteDirectionalShift
+        when:
+            evaluate_proposal("PROP-RES-SHIFT", "2.0", "submission", "@participant(user: \"alex\", level: 3)\n    @participant(user: \"sofia\", level: 3)")
+        then:
+            Web response_status_is 200
+            Web response_body_matches "@proposal\\(id: \"PROP-RES-SHIFT\", version: \"2.0\", status: \"passed\"\\)"
+            Web response_body_matches "(?s)@history\\s*\\{.*@revision\\(version: \"2.0\", event: \"passed\","
+    }
+
+    test CheckShiftStorage "SQLite records active version 2.0 passed with four revisions" {
+        given:
+            Test has_succeeded EvaluateShiftedToPassed
+        when:
+            Terminal run "sqlite3 \"${CONSENT_LOOP_DB_PATH}\" \"SELECT status, active_version FROM proposals WHERE proposal_id = 'PROP-RES-SHIFT'; SELECT count(*) FROM proposal_revisions WHERE proposal_id = 'PROP-RES-SHIFT';\""
+        then:
+            Terminal last_command succeeded
+            Terminal output_contains "passed|2.0"
+            Terminal output_contains "4"
+    }
+}
+
+scenario "Invalid resolution attempts are rejected" {
+    test SubmitForInvalid "Initial proposal is submitted successfully" {
+        given:
+            Test can_start
+        when:
+            submit_proposal("PROP-RES-INVALID", "@participant(user: \"alex\", level: 3)")
+        then:
+            Web response_status_is 201
+    }
+
+    test EnterRefinementForInvalid "Dissenting participant moves proposal to refinement" {
+        given:
+            Test has_succeeded SubmitForInvalid
+        when:
+            evaluate_proposal("PROP-RES-INVALID", "1.0", "submission", "@participant(user: \"alex\", level: 3)\n    @participant(user: \"sofia\", level: 1) {\n      @amendment(target-version: \"1.0\", status: \"proposed\") {\n        Add workspace caching.\n      }\n    }")
+        then:
+            Web response_status_is 200
+    }
+
+    test WrongVersionRejected "Amendment targeting unrelated version returns 400" {
+        given:
+            Test has_succeeded EnterRefinementForInvalid
+        when:
+            evaluate_proposal("PROP-RES-INVALID", "1.0", "refinement", "@participant(user: \"alex\", level: 3)\n    @participant(user: \"sofia\", level: 1) {\n      @amendment(target-version: \"9.9\", status: \"adopted\") {\n        Invalid target.\n      }\n    }")
+        then:
+            Web response_status_is 400
+            Web json_path at "/error/code" equals "wrong_version_amendment"
+    }
+
+    test AdoptAmendmentForInvalid "Author adopts amendment bumping to version 1.1" {
+        given:
+            Test has_succeeded WrongVersionRejected
+        when:
+            evaluate_proposal("PROP-RES-INVALID", "1.0", "refinement", "@participant(user: \"alex\", level: 3)\n    @participant(user: \"sofia\", level: 1) {\n      @amendment(target-version: \"1.0\", status: \"adopted\") {\n        Add workspace caching.\n      }\n    }")
+        then:
+            Web response_status_is 200
+    }
+
+    test AlreadyResolvedRejected "Adopting already resolved amendment returns 409" {
+        given:
+            Test has_succeeded AdoptAmendmentForInvalid
+        when:
+            evaluate_proposal("PROP-RES-INVALID", "1.1", "refinement", "@participant(user: \"alex\", level: 3)\n    @participant(user: \"sofia\", level: 1) {\n      @amendment(target-version: \"1.1\", status: \"adopted\") {\n        Add workspace caching.\n      }\n    }")
+        then:
+            Web response_status_is 409
+            Web json_path at "/error/code" equals "already_resolved"
+    }
+}
+

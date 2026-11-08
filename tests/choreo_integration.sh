@@ -12,7 +12,7 @@ for tool in hica choreo curl sqlite3; do
 done
 
 if [[ "$#" -eq 0 ]]; then
-  set -- tests/health.chor tests/submission.chor tests/evaluation.chor
+  set -- tests/health.chor tests/submission.chor tests/evaluation.chor tests/resolution.chor
 fi
 
 for spec in "$@"; do
@@ -31,7 +31,9 @@ else
   fi
 fi
 
-hica build
+if [[ ! -x ./src/main ]] || [[ -n "$(find src -name '*.hc' -newer ./src/main)" ]]; then
+  hica build
+fi
 
 export CONSENT_LOOP_TEST_DIR
 CONSENT_LOOP_TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/consent-loop-choreo.XXXXXX")"
